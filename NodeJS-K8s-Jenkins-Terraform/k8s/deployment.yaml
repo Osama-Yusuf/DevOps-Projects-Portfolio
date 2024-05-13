@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: node-test
+  name: node-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-test-pod
+  # this's the default strategy where the old pods are gradually replaced by new ones. This strategy ensures no downtime.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # means that one new pod can be created above the replica count
+      maxSurge: 1
+      # ensures that no pods are unavailable during the rollout
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: node-test-pod
+    spec:
+      containers:
+      - name: node-test
+        image: 95osama123/frontend:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext:
+          runAsUser: 1000
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+        # check the health of our application & k8s will restart the container if this probe fails
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15 # after 15 seconds of starting the container, k8s will check the liveness probe
+          periodSeconds: 20 # how often to perform a probe
+          timeoutSeconds: 5 # how long to wait before giving up on a probe
+          successThreshold: 1 # min consecutive successes for the probe to be considered successful
+          failureThreshold: 3 # when a probe fails, k8s will try failureThreshold times before restarting the container. 
+        # ensure the container is ready to serve traffic & k8s doesn't send traffic to the pod until the readiness probe succeeds
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      restartPolicy: Always

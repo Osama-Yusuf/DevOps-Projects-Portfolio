@@ -1,0 +1,50 @@
+php:
+  image: 95osama123/laravel-kubernetes:latest
+  replicas: 1
+  fpmEnabled: false
+  ports:
+    containerPort: 80
+  cpu: 500m
+  memory: 1024Mi
+  env:
+    APP_KEY: "base64:zFkHZDK22HElRSIVLDX/D4xpfKtHP6dTuqJ43Joxnls="
+    APP_ENV: "production"
+    APP_DEBUG: "true"
+    DB_PORT: "3306"
+    DB_HOST: "mysql"
+    DB_DATABASE: "local_db"
+    DB_USERNAME: "admin"
+    DB_PASSWORD: "password"
+    REDIS_HOST: "redis"
+    REDIS_PORT: "6379"
+    REDIS_USERNAME: "admin"
+    REDIS_PASSWORD: "password"
+
+mysql:
+  image: mysql:5.7
+  replicas: 1
+  cpu: 1000m
+  memory: 2048Mi
+  env:
+    MYSQL_DATABASE: "local_db"
+    MYSQL_USER: "admin"
+    MYSQL_PASSWORD: "password"
+    MYSQL_ROOT_PASSWORD: "rootpassword"
+
+redis:
+  image: redis:alpine
+  replicas: 1
+  ports:
+  - containerPort: 6379
+  env:
+    REDIS_PASSWORD: password
+    REDIS_PORT: "6379"
+    REDIS_USERNAME: "admin"
+
+ingress:
+  enabled: true
+  annotations: {}
+  hosts:
+  - host: laravel.app.com
+    paths: ["/"]
+  tls: []

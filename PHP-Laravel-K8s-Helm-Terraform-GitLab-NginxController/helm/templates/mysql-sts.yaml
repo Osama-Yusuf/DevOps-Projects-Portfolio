@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "myapp.fullname" . }}-mysql
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  serviceName: "{{ include "myapp.fullname" . }}-mysql"
+  replicas: {{ .Values.mysql.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "myapp.fullname" . }}-mysql
+  template:
+    metadata:
+      labels:
+        app: {{ include "myapp.fullname" . }}-mysql
+    spec:
+      containers:
+      - name: mysql
+        image: "{{ .Values.mysql.image }}"
+        args: ["--ignore-db-dir=lost+found"]
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: "{{ .Values.mysql.env.MYSQL_DATABASE }}"
+        - name: MYSQL_USER
+          value: "{{ .Values.mysql.env.MYSQL_USER }}"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "myapp.fullname" . }}-secrets
+              key: mysql-user-password
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "myapp.fullname" . }}-secrets
+              key: mysql-root-password
+        resources:
+          requests:
+            cpu: "{{ .Values.mysql.cpu }}"
+            memory: "{{ .Values.mysql.memory }}"
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi

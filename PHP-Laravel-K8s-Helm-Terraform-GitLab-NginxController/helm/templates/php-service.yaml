@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "myapp.fullname" . }}-php
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: {{ .Values.php.ports.containerPort }}
+  selector:
+    app: {{ include "myapp.fullname" . }}-php

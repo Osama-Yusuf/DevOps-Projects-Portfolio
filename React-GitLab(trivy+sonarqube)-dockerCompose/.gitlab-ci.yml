@@ -1,0 +1,163 @@
+workflow:
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "main"
+      variables:
+        MS_NAME: "gitminion-prod"
+        USERNAME: ${PROD_USERNAME}
+        HOST: ${PROD_HOST}
+        DEPLOY_KEY: ${PROD_DEPLOY_KEY}
+    - if: $CI_COMMIT_REF_NAME == "dev"
+      variables:
+        MS_NAME: "gitminion-dev"
+        USERNAME: ${DEV_USERNAME}
+        HOST: ${DEV_HOST}
+        DEPLOY_KEY: ${DEV_DEPLOY_KEY}
+    - when: always      
+
+# add unit testing and lint testing and check for code coverage and exposed secrets
+
+variables:
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+  GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  TEST_IMAGE_NAME: "$CI_REGISTRY_IMAGE/$MS_NAME/test:$CI_COMMIT_SHORT_SHA"
+  IMAGE_NAME: "$CI_REGISTRY_IMAGE/$MS_NAME/release:$CI_COMMIT_SHORT_SHA"
+  DOCKER_HOST: tcp://docker:2375
+
+stages:
+  - build
+  - security-scans
+  - release
+  - deploy
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $TEST_IMAGE_NAME .
+    - echo $CI_JOB_TOKEN | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker push $TEST_IMAGE_NAME
+  only:
+    - main
+    - dev
+
+sonarqube-check:
+  stage: security-scans
+  image: 
+    name: sonarsource/sonar-scanner-cli:5.0
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - sonar-scanner -Dsonar.host.url=$SONAR_HOST_URL -X -Dsonar.qualitygate.wait=true
+    # - sonar-scanner -X -Dsonar.qualitygate.wait=true
+  allow_failure: true
+  only:
+    - main
+    - dev
+
+sonarqube-vulnerability-report:
+  stage: security-scans
+  before_script:
+    - apt-get update
+    - apt-get install -y curl
+  script:
+    - 'curl -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/issues/gitlab_sast_export?projectKey=padraorz_test-sonarqube-react_AYy9rt_s_pN_jaXl0w91&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json'
+  allow_failure: true
+  only:
+    - main
+    - dev
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - gl-sast-sonar-report.json
+    reports:
+      sast: gl-sast-sonar-report.json
+  dependencies:
+    - sonarqube-check
+
+trivy_scan:
+  stage: security-scans
+  before_script:
+    - apt-get install -y curl
+  script:
+    - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.50.2
+    - trivy --output scanning-report.txt image $TEST_IMAGE_NAME
+  only:
+    - main
+    - dev
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - scanning-report.txt
+    reports:
+      container_scanning: scanning-report.txt
+
+release_image:
+  stage: release
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo $CI_JOB_TOKEN | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - echo $TEST_IMAGE_NAME
+    - docker pull $TEST_IMAGE_NAME
+    - docker tag $TEST_IMAGE_NAME $IMAGE_NAME
+    - docker push $IMAGE_NAME
+  only:
+    - main
+    - dev
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  variables:
+    IMAGE_FULL_NAME: "$IMAGE_NAME"
+  before_script:
+    - echo "image name:${IMAGE_NAME}"
+    - echo "image full name:${IMAGE_FULL_NAME}"
+    - apk add --no-cache openssh-client git
+    - 'which ssh-agent || ( apk add openssh-client )'
+    - eval $(ssh-agent -s)
+    - echo "$DEPLOY_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan $HOST >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - |
+      GIT_STRATEGY=none ssh $USERNAME@$HOST <<EOF
+        cd GitMinion
+        rm -f bak.yml
+        git checkout -- docker-compose.yml
+
+        # Setting up Git credentials for pulling the latest changes 
+        git config --global credential.helper 'store --file .git/credentials'
+        echo "https://oauth2:$GITLAB_PATO@gitlab.com" > .git/credentials
+        git pull
+        rm .git/credentials
+
+        # Logging into GitLab's Docker Registry
+        echo $CI_JOB_TOKEN | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+        # Updating the docker-compose.yml with the new image name
+        sed -i "s|image: 'PLACEHOLDER_IMAGE'|image: '${IMAGE_FULL_NAME}'|" docker-compose.yml
+
+        # Pulling the updated Docker image and starting the service
+        docker-compose pull
+        docker-compose up -d
+
+        cp docker-compose.yml bak.yml
+
+        # Revert changes to the docker-compose.yml to its default state
+        git checkout -- docker-compose.yml
+      EOF
+  only:
+    - main
+    - dev

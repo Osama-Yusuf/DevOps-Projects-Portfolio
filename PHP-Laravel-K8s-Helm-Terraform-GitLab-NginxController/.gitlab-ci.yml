@@ -1,0 +1,26 @@
+stages:
+- build
+- deploy
+
+variables:
+  HELM_CHART: myapp
+  IMAGE: $Dockerhub_User/laravel-kubernetes:latest
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+  - docker:dind
+  script:
+  - cd larvel_app
+  - docker login -u "$Dockerhub_User" -p "$Dockerhub_Pass"
+  - docker build -t $IMAGE .
+  - docker push $IMAGE
+
+deploy:
+  stage: deploy
+  script:
+  - echo "Deployed (There's no k8s cluster attached to GitLab)"
+  # - helm upgrade --install $HELM_CHART ./helm
+  only:
+  - main

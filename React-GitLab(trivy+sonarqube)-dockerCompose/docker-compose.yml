@@ -1,0 +1,7 @@
+version: '3.9'
+
+services:
+  react-app:
+    image: 'PLACEHOLDER_IMAGE'
+    ports:
+      - "3000:80"

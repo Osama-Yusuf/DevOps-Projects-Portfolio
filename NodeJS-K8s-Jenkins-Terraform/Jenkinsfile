@@ -1,0 +1,32 @@
+pipeline {
+    agent {
+        node { label 'master' }
+    }
+    stages {
+        stage('Pull code from git hub') {
+            steps {
+                sh "pwd"
+                sh 'git clone https://github.com/osama9mohamed5/devops-task-1.git'
+            }
+        }
+        stage('Build and push app to dockerhub') {
+            steps {
+                dir("/home/ubuntu/workspace/pipeline/devops-task-1/nodeJS-K8s-Jenkins") {
+                    sh "pwd"
+                    sh 'docker build . -t $DOCKERHUB_USER/frontend:latest'
+                    sh 'echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USER -p'
+                    sh 'docker push $DOCKERHUB_USER/frontend:latest'
+                }
+            }
+        }
+        stage('Deploy to kubernetes') {
+            steps {
+                dir("/home/ubuntu/workspace/pipeline/devops-task-1/nodeJS-K8s-Jenkins/k8s/") {
+                    sh "pwd"
+                    sh 'kubectl apply -f nodeport.yaml'
+                    sh 'kubectl apply -f node-deployment.yaml'
+                }
+            }
+        }
+    }
+}

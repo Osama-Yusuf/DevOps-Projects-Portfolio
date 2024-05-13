@@ -1,0 +1,40 @@
+version: '3.5'
+services:
+  php:
+    image: 95osama123/laravel-kubernetes:latest
+    restart: always
+    ports:
+      - 8000:80
+    environment:
+      - APP_KEY="base64:zFkHZDK22HElRSIVLDX/D4xpfKtHP6dTuqJ43Joxnls="
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_PORT=3306
+      - DB_HOST=mysql
+      - DB_DATABASE=local_db
+      - DB_USERNAME=admin
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=password
+      - REDIS_PORT=6379
+      - REDIS_USERNAME=redis
+  mysql:
+    image: mysql:5.7
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=local_db
+      - MYSQL_USER=admin
+      - MYSQL_PASSWORD=password
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - 6379:6379
+    environment:
+      - REDIS_PASSWORD=password
+      - REDIS_PORT=6379
+      - REDIS_USERNAME=redis
+
+    
+
